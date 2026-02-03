@@ -1,0 +1,50 @@
+- Float('4.4721359549995796', precision=53)
+- Add(Mul(Float('95.247047198324893', precision=53), Symbol('t')), Float('-26.457513110645806',
+  precision=53))
+- Add(Mul(Float('1008.0000000013484', precision=53), Pow(Symbol('t'), Integer(2))),
+  Mul(Integer(-1), Float('756.0000000010042', precision=53), Symbol('t')), Float('90.000000000118419',
+  precision=53))
+- Add(Mul(Float('7959.8994961508351', precision=53), Pow(Symbol('t'), Integer(3))),
+  Mul(Integer(-1), Float('10029.473365177508', precision=53), Pow(Symbol('t'), Integer(2))),
+  Mul(Float('3343.1577884038984', precision=53), Symbol('t')), Float('-232.16373530683862',
+  precision=53))
+- Add(Mul(Float('53542.436678347301', precision=53), Pow(Symbol('t'), Integer(4))),
+  Mul(Integer(-1), Float('95186.554077197856', precision=53), Pow(Symbol('t'), Integer(3))),
+  Mul(Float('54515.935504954388', precision=53), Pow(Symbol('t'), Integer(2))), Mul(Integer(-1),
+  Float('10903.187098103046', precision=53), Symbol('t')), Float('504.77718030373046',
+  precision=53))
+- Add(Mul(Float('325655.89181483566', precision=53), Pow(Symbol('t'), Integer(5))),
+  Mul(Integer(-1), Float('747679.35028167919', precision=53), Pow(Symbol('t'), Integer(4))),
+  Mul(Float('613480.49896085041', precision=53), Pow(Symbol('t'), Integer(3))), Mul(Integer(-1),
+  Float('214718.17723579766', precision=53), Pow(Symbol('t'), Integer(2))), Mul(Float('29279.751855333456',
+  precision=53), Symbol('t')), Float('-975.99174481277043', precision=53))
+- Add(Mul(Float('1848985.0008299642', precision=53), Pow(Symbol('t'), Integer(6))),
+  Mul(Integer(-1), Float('5200269.0150488047', precision=53), Pow(Symbol('t'), Integer(5))),
+  Mul(Float('5571715.2672666749', precision=53), Pow(Symbol('t'), Integer(4))), Mul(Integer(-1),
+  Float('2830076.7351214755', precision=53), Pow(Symbol('t'), Integer(3))), Mul(Float('685749.1319779075',
+  precision=53), Pow(Symbol('t'), Integer(2))), Mul(Integer(-1), Float('68574.887677637584',
+  precision=53), Symbol('t')), Float('1731.6883725450316', precision=53))
+- Add(Mul(Float('9995975.7236345448', precision=53), Pow(Symbol('t'), Integer(7))),
+  Mul(Integer(-1), Float('33257688.788399685', precision=53), Pow(Symbol('t'), Integer(6))),
+  Mul(Float('44016732.492564037', precision=53), Pow(Symbol('t'), Integer(5))), Mul(Integer(-1),
+  Float('29474875.318999775', precision=53), Pow(Symbol('t'), Integer(4))), Mul(Float('10479700.95947081',
+  precision=53), Pow(Symbol('t'), Integer(3))), Mul(Integer(-1), Float('1886292.1791989275',
+  precision=53), Pow(Symbol('t'), Integer(2))), Mul(Float('145094.44364485596', precision=53),
+  Symbol('t')), Float('-2878.7389777849494', precision=53))
+- Add(Mul(Float('53703876.28441824', precision=53), Pow(Symbol('t'), Integer(8))),
+  Mul(Integer(-1), Float('206569805.1868794', precision=53), Pow(Symbol('t'), Integer(7))),
+  Mul(Float('326160946.53332001', precision=53), Pow(Symbol('t'), Integer(6))), Mul(Integer(-1),
+  Float('272355807.05869943', precision=53), Pow(Symbol('t'), Integer(5))), Mul(Float('129031219.03931181',
+  precision=53), Pow(Symbol('t'), Integer(4))), Mul(Integer(-1), Float('34495205.373085454',
+  precision=53), Pow(Symbol('t'), Integer(3))), Mul(Float('4842993.6028553359', precision=53),
+  Pow(Symbol('t'), Integer(2))), Mul(Integer(-1), Float('297455.19506739272', precision=53),
+  Symbol('t')), Float('4784.1322262417707', precision=53))
+- Add(Mul(Float('146798960.02883857', precision=53), Pow(Symbol('t'), Integer(9))),
+  Mul(Integer(-1), Float('681925141.38407743', precision=53), Pow(Symbol('t'), Integer(8))),
+  Mul(Float('1336136718.3452048', precision=53), Pow(Symbol('t'), Integer(7))), Mul(Integer(-1),
+  Float('1434921761.2852888', precision=53), Pow(Symbol('t'), Integer(6))), Mul(Float('918327962.60918677',
+  precision=53), Pow(Symbol('t'), Integer(5))), Mul(Integer(-1), Float('356322756.16096091',
+  precision=53), Pow(Symbol('t'), Integer(4))), Mul(Float('81438317.098756909', precision=53),
+  Pow(Symbol('t'), Integer(3))), Mul(Integer(-1), Float('10078054.816483811', precision=53),
+  Pow(Symbol('t'), Integer(2))), Mul(Float('558504.87888315227', precision=53), Symbol('t')),
+  Float('-8259.9090208219695', precision=53))
