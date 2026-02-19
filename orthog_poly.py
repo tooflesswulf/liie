@@ -97,9 +97,9 @@ if __name__ == '__main__':
 
     t = sym.symbols('t')
     def gamma(t): return rho(t, 0, 0)
-    gab = np.diag([1, 1, 0])
+    gab = np.diag([0, 0, 1])
 
-    sfx = '0' # [1,1,0] -> '', [1,1,1] -> '1'
+    sfx = '2' # [1,1,0] -> '', [1,1,1] -> '1', [0,0,1] -> '2'
 
     if recalc_polys:
         pp = ortho_bases(gamma, gab, 10)
