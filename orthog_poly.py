@@ -114,7 +114,6 @@ if __name__ == '__main__':
             yaml.dump(coeffs_string, f)
         print('Calculated coeffs')
 
-
     with open('_orthopoly.yaml', 'r') as f:
         polys_string = yaml.safe_load(f)
     pp = [sym.sympify(ps) for ps in polys_string]

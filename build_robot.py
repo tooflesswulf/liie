@@ -11,14 +11,15 @@ def make_cylinder(name, jid, radius, length, color=(0.2, 0.6, 1.0, 1.0)):
     # Create a cylinder along the Z-axis
     cylinder = pin.GeometryObject(
         name, jid,
+        location,
         pin.hppfcl.Cylinder(radius, length),
-        location
     )
     cylinder.meshColor = np.array(color)
     return cylinder
 
 
 def build_simple_arm(lengths, joint_axes=None, visualize=False, model=None, geom_model=None,
+                     prefix='',
                      link_color=(0.2, 0.6, 1.0, 1.0)):
     """
     Build a simple robot arm with joints placed arbitrarily.
@@ -69,7 +70,7 @@ def build_simple_arm(lengths, joint_axes=None, visualize=False, model=None, geom
 
     for i, (ll, axis) in enumerate(zip(lengths, joint_axes)):
         ix = model.nq + 1
-        joint_name = f"joint_{ix}"
+        joint_name = f"{prefix}joint_{ix}"
 
         # Convert to numpy arrays
         axis = np.array(axis, dtype=float)
@@ -103,16 +104,16 @@ def build_simple_arm(lengths, joint_axes=None, visualize=False, model=None, geom
 
         # Add visual geometry for this link
         if ll > 0:
-            cyl = make_cylinder(f"link_{ix}_visual", parent_id, 0.02, ll, color=link_color)
+            cyl = make_cylinder(f"{prefix}link_{ix}_visual", parent_id, 0.02, ll, color=link_color)
             geom_model.addGeometryObject(cyl)
 
         # Add a small sphere at the joint location for visualization
         sphere_radius = 0.03
         sphere = pin.GeometryObject(
-            f"joint_{ix}_sphere",
+            f"{prefix}joint_{ix}_sphere",
             joint_id,
+            pin.SE3.Identity(),
             pin.hppfcl.Sphere(sphere_radius),
-            pin.SE3.Identity()
         )
         sphere.meshColor = np.array([1.0, 0.3, 0.3, 1.0])
         geom_model.addGeometryObject(sphere)
@@ -189,8 +190,9 @@ if __name__ == '__main__':
         (0, 0, 1),  # Joint 4: Revolute around Z-axis
     ]
 
-    model, geom_model, viz = build_simple_arm(lengths, axes, visualize=True)
+    model, geom_model = build_simple_arm(lengths, axes, visualize=True)
     data = model.createData()
+    viz = setup_visualizer(model, geom_model)
 
     q0 = 0 * np.array([1, 1, 0, 0])
     qd = .1 * np.array([1, 1, 0., 0])
