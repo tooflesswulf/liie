@@ -2,7 +2,7 @@ import pinocchio as pin
 import numpy as np
 from dataclasses import dataclass
 
-import build_robot
+import robot_pino.build_robot as build_robot
 
 
 @dataclass
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         (0, 0, 1),  # Joint 4: Revolute around Z-axis
     ]
 
-    import build_robot
+    import robot_pino.build_robot as build_robot
     model, geom_model = build_robot.build_simple_arm(ll1, axes1, visualize=True)
     arm = RobotArm(model, geom_model, Nintermediate=11)
     arm.display_state(q=np.arange(arm.nq), show_frames=True)
