@@ -3,6 +3,8 @@ import npoly2d as n2
 import numpy as np
 import scipy.special
 from scipy.integrate import solve_ivp
+from scipy.optimize import root
+from tqdm.auto import tqdm
 import yaml
 import sympy as sym
 import matplotlib.pyplot as plt
@@ -170,7 +172,7 @@ def montecarlo_integration_samples(domain, num_samples=1000):
 
     return samples, total_volume
 
-def integrate_ricci_scalar(metric, domain, num_samples=1000, eps=1e-5):
+def integrate_ricci_scalar(metric, domain, num_samples=1000, eps=1e-5, progress=False):
     """
     Integrate the Ricci scalar over a given domain in n-dimensional space using Monte Carlo integration.
 
@@ -202,7 +204,8 @@ def integrate_ricci_scalar(metric, domain, num_samples=1000, eps=1e-5):
 
     # Evaluate R * √det(g) at each sample
     integrand_values = []
-    for sample in samples:
+    iterator = tqdm(samples, desc='Ricci MC', leave=False) if progress else samples
+    for sample in iterator:
         try:
             R = compute_ricci_curvature(sample, metric, eps)
             g = metric(sample)
@@ -226,6 +229,203 @@ def integrate_ricci_scalar(metric, domain, num_samples=1000, eps=1e-5):
     error_estimate = volume * std_integrand / np.sqrt(len(integrand_values))
 
     return integral, error_estimate
+
+
+def _orient_ccw_2d(points, simplices):
+    """Return triangles re-ordered so each is CCW in coordinates."""
+    out = np.asarray(simplices).copy()
+    for k, tri in enumerate(out):
+        p0, p1, p2 = points[tri[0]], points[tri[1]], points[tri[2]]
+        cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0])
+        if cross < 0:
+            out[k] = [tri[0], tri[2], tri[1]]
+    return out
+
+
+def _boundary_cycles_2d(simplices):
+    """
+    Extract ordered boundary cycles from a CCW-oriented 2D triangle mesh.
+    Returns a list of cycles; each cycle is a list of vertex indices traversed
+    in CCW order along the boundary (interior on the left).
+    """
+    edge_uses = {}
+    for tri in simplices:
+        for k in range(3):
+            i, j = int(tri[k]), int(tri[(k + 1) % 3])
+            edge_uses[(i, j)] = edge_uses.get((i, j), 0) + 1
+
+    # A directed edge is on the boundary iff its reverse is not also present.
+    next_v = {}
+    for (i, j) in edge_uses:
+        if (j, i) not in edge_uses:
+            next_v[i] = j
+
+    cycles = []
+    visited = set()
+    for start in list(next_v.keys()):
+        if start in visited:
+            continue
+        cycle = [start]
+        visited.add(start)
+        cur = next_v.get(start)
+        while cur is not None and cur != start:
+            if cur in visited:
+                break
+            cycle.append(cur)
+            visited.add(cur)
+            cur = next_v.get(cur)
+        cycles.append(cycle)
+    return cycles
+
+
+def _J_rot_2d(g, v):
+    """+90° rotation of v in the metric g (oriented). J(1,0)=(0,1) when g=I."""
+    det = g[0, 0] * g[1, 1] - g[0, 1] * g[1, 0]
+    sd = np.sqrt(det)
+    return np.array([
+        -(g[0, 1] * v[0] + g[1, 1] * v[1]) / sd,
+         (g[0, 0] * v[0] + g[0, 1] * v[1]) / sd,
+    ])
+
+
+def integrate_boundary_term_2d(metric, domain, n_quad=16, eps=1e-5, progress=False):
+    """
+    Compute the boundary contribution to Gauss-Bonnet on a 2D triangulated
+    domain with piecewise-linear boundary:
+
+        B(∂M) = ∮_∂M k_g ds  +  Σ_corners θ_i
+
+    where θ_i are signed exterior (turning) angles in the metric.
+
+    Returns
+    -------
+    kg_integral : float
+        ∮ k_g ds along the straight (in coordinates) boundary segments.
+    corner_sum : float
+        Σ exterior angles at boundary vertices.
+    """
+    points = np.asarray(domain['points'], dtype=float)
+    simplices = _orient_ccw_2d(points, domain['simplices'])
+    cycles = _boundary_cycles_2d(simplices)
+
+    # Gauss-Legendre quadrature on [0, 1]
+    nodes, weights = np.polynomial.legendre.leggauss(n_quad)
+    nodes = 0.5 * (nodes + 1.0)
+    weights = 0.5 * weights
+
+    kg_integral = 0.0
+    corner_sum = 0.0
+
+    total_segments = sum(len(c) for c in cycles if len(c) >= 2)
+    seg_bar = tqdm(total=total_segments, desc='Boundary k_g', leave=False) if progress else None
+
+    for cycle in cycles:
+        N = len(cycle)
+        if N < 2:
+            continue
+
+        # ∮ k_g ds : integrate along each straight (in coordinates) segment.
+        for k in range(N):
+            i = cycle[k]
+            j = cycle[(k + 1) % N]
+            a = points[i]
+            b = points[j]
+            v = b - a
+            seg = 0.0
+            for t, w in zip(nodes, weights):
+                p = a + t * v
+                g = metric(p)
+                Gamma = compute_christoffel_symbols(p, metric, eps=eps)
+                # Coordinate acceleration of the straight line: A^k = Γ^k_{ij} v^i v^j
+                A = np.einsum('kij,i,j->k', Gamma, v, v)
+                Jv = _J_rot_2d(g, v)
+                s2 = float(v @ g @ v)
+                # k_g ds = g(A, Jv) / s^2 dt   (reparameterization-invariant)
+                seg += w * float(A @ g @ Jv) / s2
+            kg_integral += seg
+            if seg_bar is not None:
+                seg_bar.update(1)
+
+        # Σ exterior angles at corners
+        for k in range(N):
+            i_prev = cycle[(k - 1) % N]
+            i_curr = cycle[k]
+            i_next = cycle[(k + 1) % N]
+            p = points[i_curr]
+            T_in = points[i_curr] - points[i_prev]
+            T_out = points[i_next] - points[i_curr]
+            g = metric(p)
+            T_in = T_in / np.sqrt(T_in @ g @ T_in)
+            T_out = T_out / np.sqrt(T_out @ g @ T_out)
+            cos_a = float(T_in @ g @ T_out)
+            sin_a = float(_J_rot_2d(g, T_in) @ g @ T_out)
+            corner_sum += np.arctan2(sin_a, cos_a)
+
+    if seg_bar is not None:
+        seg_bar.close()
+
+    return kg_integral, corner_sum
+
+
+def euler_characteristic(metric, domain, num_samples=5000, eps=1e-5,
+                         include_boundary=True, n_quad=16, progress=True):
+    """
+    Compute the Euler characteristic of a 2D Riemannian manifold via the
+    Gauss-Bonnet theorem (with boundary):
+
+        ∫_M K dA + ∮_∂M k_g ds + Σ_corners θ_i = 2π χ(M)
+
+    In 2D the Ricci scalar satisfies R = 2K, so
+
+        χ(M) = ( (1/2) ∫_M R √det(g) d²x + ∮ k_g ds + Σ θ_i ) / (2π).
+
+    The boundary of the mesh is treated as piecewise straight in coordinates,
+    with corners at the vertices contributing exterior turning angles.
+
+    Parameters
+    ----------
+    metric : callable
+        metric(x) -> (2, 2) matrix.
+    domain : dict
+        Mesh domain as accepted by `integrate_ricci_scalar`.
+    num_samples : int
+        Monte Carlo sample count.
+    eps : float
+        Finite-difference step for curvature.
+
+    Returns
+    -------
+    chi : float
+        Estimated Euler characteristic (round to nearest integer for the
+        topological invariant).
+    error : float
+        1-sigma Monte Carlo error on chi.
+    """
+    # Sanity-check dimension by probing the metric at a sample point.
+    sample_pt = np.asarray(domain['points'])[0]
+    g_probe = metric(sample_pt)
+    dim = g_probe.shape[0]
+    if dim != 2:
+        raise NotImplementedError(
+            "euler_characteristic is currently only implemented for 2D "
+            "manifolds (Gauss-Bonnet). For dim > 2 the Chern-Gauss-Bonnet "
+            "formula requires the Pfaffian of the Riemann tensor."
+        )
+
+    integral, error = integrate_ricci_scalar(
+        metric, domain, num_samples=num_samples, eps=eps, progress=progress
+    )
+    interior_K = 0.5 * integral  # ∫ K dA = (1/2) ∫ R √g d²x in 2D
+
+    boundary_kg = 0.0
+    corner_sum = 0.0
+    if include_boundary:
+        boundary_kg, corner_sum = integrate_boundary_term_2d(
+            metric, domain, n_quad=n_quad, eps=eps, progress=progress
+        )
+
+    chi = (interior_K + boundary_kg + corner_sum) / (2.0 * np.pi)
+    return chi, 0.5 * error / (2.0 * np.pi)
 
 
 def geodesic_equation(state, metric, eps=1e-5):
@@ -277,23 +477,39 @@ def compute_geodesic(x0, v0, metric, length=1.0, num_points=100, eps=1e-5):
     return sol.y[:dim, :].T  # Return only positions
 
 
-def dist_geo(x1, x2, metric, eps=1e-5):
-    """Compute geodesic distance between two points using numerical integration."""
-    # Compute geodesic connecting x1 and x2
-    direction = x2 - x1
-    length = np.linalg.norm(direction)
-    geodesic = compute_geodesic(x1, direction, metric, length=length, num_points=100, eps=eps)
+def dist_geo(x1, x2, metric, eps=1e-5, tol=1e-6):
+    """
+    Compute the geodesic distance between two points x1 and x2.
 
-    # # Compute length of geodesic by integrating √(g_{ij} dx^i/dt dx^j/dt)
-    # total_length = 0.0
-    # for i in range(len(geodesic) - 1):
-    #     mid_point = (geodesic[i] + geodesic[i + 1]) / 2
-    #     g_mid = metric(mid_point)
-    #     dx = geodesic[i + 1] - geodesic[i]
-    #     ds = np.sqrt(dx @ g_mid @ dx)
-    #     total_length += ds
+    Uses a shooting method: find an initial velocity v0 at x1 such that the
+    geodesic x(t) with x(0)=x1, ẋ(0)=v0 satisfies x(1)=x2. Since geodesics
+    have constant speed under the metric, the distance is then √(g(x1)(v0, v0)).
+    """
+    x1 = np.asarray(x1, dtype=float)
+    x2 = np.asarray(x2, dtype=float)
+    dim = len(x1)
 
-    # return total_length
+    def shoot(v0):
+        y0 = np.r_[x1, v0]
+        sol = solve_ivp(
+            lambda t, y: geodesic_equation(y, metric, eps=eps),
+            [0.0, 1.0],
+            y0,
+            method='RK45',
+            rtol=1e-8,
+            atol=1e-10,
+        )
+        return sol.y[:dim, -1] - x2
+
+    # Initial guess: Euclidean displacement (correct in flat space)
+    v0_guess = x2 - x1
+    sol = root(shoot, v0_guess, tol=tol)
+    if not sol.success:
+        raise RuntimeError(f"Geodesic shooting failed to converge: {sol.message}")
+
+    v0 = sol.x
+    g0 = metric(x1)
+    return float(np.sqrt(v0 @ g0 @ v0))
 
 
 if __name__ == '__main__':
