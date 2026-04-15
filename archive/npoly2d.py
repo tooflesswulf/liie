@@ -85,7 +85,7 @@ if __name__ == '__main__':
     sfx = ''  # [1,1,0] -> '', [1,1,1] -> '1'
     gab = np.diag([1, 1, 0])
 
-    with open(f'_orthopoly{sfx}.yaml', 'r') as f:
+    with open(f'bases_fns/_orthopoly{sfx}.yaml', 'r') as f:
         polys_string = yaml.safe_load(f)
     pp = [sym.sympify(ps) for ps in polys_string]
     print('loaded bases')

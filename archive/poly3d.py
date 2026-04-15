@@ -9,7 +9,7 @@ import yaml
 import pinocchio as pin
 import pinocchio.visualize as pv
 
-import build_robot
+import robot_pino.build_robot as build_robot
 
 
 def Adg(t):

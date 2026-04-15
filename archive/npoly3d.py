@@ -32,6 +32,19 @@ def inner_product(gamma, gab, xi1, xi2):
     return np.trapezoid(integrand, dx=1 / (N - 1))
 
 
+def shape_exp(xi):
+    # Given twist trajectory xi(s), integrate to get SE(3) trajectory gamma(s)
+    N = xi.shape[0]
+    xi = xi + [0, 0, 1, 0, 0, 0]  # Add identity component for integration
+    gi = np.eye(4)
+    gamma = [gi]
+    for i in range(1, N):
+        accu = pin.exp(xi[i - 1] * (1 / (N - 1)))
+        gi = gi @ accu
+        gamma.append(gi)
+    return np.array(gamma)
+
+
 if __name__ == '__main__':
     N = 100
 

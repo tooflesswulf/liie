@@ -2,8 +2,8 @@
 import numpy as np
 import pinocchio as pin
 
-import build_robot
-import robot
+import robot_pino.build_robot as build_robot
+import robot_pino.robot as robot
 
 
 def ik(from_arm: robot.RobotArm, to_arm: robot.RobotArm, from_q0, to_q):
