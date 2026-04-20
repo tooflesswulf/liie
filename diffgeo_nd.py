@@ -1,5 +1,3 @@
-import npoly2d as n2
-
 import numpy as np
 import scipy.special
 from scipy.integrate import solve_ivp
@@ -451,7 +449,7 @@ def geodesic_equation(state, metric, eps=1e-5):
     return np.r_[xdot, xddot]
 
 
-def compute_geodesic(x0, v0, metric, length=1.0, num_points=100, eps=1e-5):
+def compute_geodesic(x0, v0, metric, length=1.0, num_points=100, eps=1e-5, progress=False):
     """Compute a geodesic starting from x0 in the given direction."""
     # Normalize direction according to metric at start point
     dim = len(x0)
@@ -463,9 +461,24 @@ def compute_geodesic(x0, v0, metric, length=1.0, num_points=100, eps=1e-5):
     # Initial state: position + velocity
     y0 = np.r_[x0, v0]
 
+    def eq(t, y):
+        return geodesic_equation(y, metric)
+
+    if progress:
+        from tqdm.auto import tqdm
+        pbar = tqdm(total=100, desc='compute_geodesic')
+        last_t = [0.0]
+        _eq = eq
+        def eq(t, y):
+            inc = int((t - last_t[0]) / length * 100)
+            if inc > 0:
+                pbar.update(inc)
+                last_t[0] = t
+            return _eq(t, y)
+
     # Integrate geodesic equation
     sol = solve_ivp(
-        lambda t, y: geodesic_equation(y, metric),
+        eq,
         [0, length],
         y0,
         t_eval=np.linspace(0, length, num_points),
@@ -474,10 +487,13 @@ def compute_geodesic(x0, v0, metric, length=1.0, num_points=100, eps=1e-5):
         atol=1e-8
     )
 
+    if progress:
+        pbar.close()
+
     return sol.y[:dim, :].T  # Return only positions
 
 
-def dist_geo(x1, x2, metric, eps=1e-5, tol=1e-6):
+def dist_geo(x1, x2, metric, eps=1e-5, tol=1e-6, progress=False, return_path=False, num_points=100):
     """
     Compute the geodesic distance between two points x1 and x2.
 
@@ -489,27 +505,45 @@ def dist_geo(x1, x2, metric, eps=1e-5, tol=1e-6):
     x2 = np.asarray(x2, dtype=float)
     dim = len(x1)
 
+    if progress:
+        from tqdm.auto import tqdm
+        shoot_pbar = tqdm(total=100, desc='dist_geo shooting')
+
     def shoot(v0):
+        if progress:
+            shoot_pbar.reset()
+            last_t = [0.0]
+        def eq(t, y):
+            if progress:
+                inc = int((t - last_t[0]) * 100)
+                if inc > 0:
+                    shoot_pbar.update(inc)
+                    last_t[0] = t
+            return geodesic_equation(y, metric, eps=eps)
         y0 = np.r_[x1, v0]
-        sol = solve_ivp(
-            lambda t, y: geodesic_equation(y, metric, eps=eps),
-            [0.0, 1.0],
-            y0,
-            method='RK45',
-            rtol=1e-8,
-            atol=1e-10,
-        )
+        sol = solve_ivp(eq, [0.0, 1.0], y0, method='RK45', rtol=1e-8, atol=1e-10)
         return sol.y[:dim, -1] - x2
 
     # Initial guess: Euclidean displacement (correct in flat space)
     v0_guess = x2 - x1
     sol = root(shoot, v0_guess, tol=tol)
+
+    if progress:
+        shoot_pbar.close()
+
     if not sol.success:
         raise RuntimeError(f"Geodesic shooting failed to converge: {sol.message}")
 
     v0 = sol.x
     g0 = metric(x1)
-    return float(np.sqrt(v0 @ g0 @ v0))
+    dist = float(np.sqrt(v0 @ g0 @ v0))
+
+    if return_path:
+        path = compute_geodesic(x1, v0, metric, length=1.0, num_points=num_points,
+                                eps=eps, progress=progress)
+        return dist, path
+
+    return dist
 
 
 if __name__ == '__main__':

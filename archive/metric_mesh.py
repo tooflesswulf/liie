@@ -1,4 +1,4 @@
-import npoly2d as n2
+import bases_fns.npoly2d as n2
 
 import numpy as np
 from scipy.integrate import solve_ivp
