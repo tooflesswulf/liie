@@ -140,49 +140,11 @@ class Bases3D:
         ]
         return xi
 
-    def metric(self, xx, N=100):
-        tt = np.linspace(0, 1, N)
-        size = self.size
-
-        # Polynomial evaluations for each axis: shape (N, size)
-        x_polys = self.x_poly_fn(tt)[:, :size]
-        y_polys = self.y_poly_fn(tt)[:, :size]
-        z_polys = self.z_poly_fn(tt)[:, :size]
-
-        # Build (N, 6) basis vectors for each embedding coordinate.
-        # emb2xi maps x/y/z coefficients into xi columns 3/4/5 (omega_x/y/z).
-        bases = []
-        for k in range(size):
-            b = np.zeros((N, 6))
-            b[:, 3] = x_polys[:, k]
-            bases.append(b)
-        for k in range(size):
-            b = np.zeros((N, 6))
-            b[:, 4] = y_polys[:, k]
-            bases.append(b)
-        for k in range(size):
-            b = np.zeros((N, 6))
-            b[:, 5] = z_polys[:, k]
-            bases.append(b)
-
-        # Arm shape at embedding point xx
-        xi = self.emb2xi(xx, tt)
+    def metric(self, xx):
+        xi = self.emb2xi(xx)
         gamma = npoly3d.shape_exp(xi)
-
-        # Precompute gammadot for each basis vector
-        gdots = [npoly3d.gammadot(gamma, b) for b in bases]
-
-        # g_ij = integral of <gammadot_i, gammadot_j>_gab
-        total = 3 * size
-        g = np.zeros((total, total))
-        for i in range(total):
-            for j in range(i, total):
-                integrand = np.einsum('si,ij,sj->s', gdots[i], self.gab, gdots[j])
-                gij = np.trapezoid(integrand, dx=1 / (N - 1))
-                g[i, j] = gij
-                g[j, i] = gij
-
-        return g
+        bases = self.bases
+        return npoly3d.metric(gamma, self.gab, bases)
 
 
 def load_bases(gab_diag):
