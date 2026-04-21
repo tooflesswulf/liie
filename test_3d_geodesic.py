@@ -11,19 +11,11 @@ import robot_pino.robot as robot
 import diffgeo_nd as dn
 
 
-def load_coeffs(file):
-    with open(file, 'r') as f:
-        coeffs_string = yaml.safe_load(f)
-    coeffs = [sym.sympify(cs) for cs in coeffs_string]
-
-    def eval_coeffs(x):
-        return np.array([ci.subs({sym.symbols('x'): x}) for ci in coeffs]).astype(float)
-    return eval_coeffs
-
-
 if __name__ == '__main__':
     sx = sym.symbols('x')
+    tt = np.linspace(0, 1, 100)
     bases = u3d.Bases3D(gab_diag=[1, 1, 1, 0, 0, 1], emb_size=4)
+    bases.set_spacing(tt)
 
     ll1 = [0, .33, .33, .33]
     axes1 = [
@@ -60,7 +52,6 @@ if __name__ == '__main__':
     ax.set_box_aspect([1, 1, 1])
     plt.show()
 
-
     ########################################
     # Stage 2: Visualize geodesic interpolation between two joint configurations
 
@@ -79,46 +70,17 @@ if __name__ == '__main__':
     emb1 = joints1 @ coeffs1
     emb2 = joints2 @ coeffs2
 
-    from tqdm.auto import tqdm
+    def metric(xx): return bases.metric(xx)
 
-    metric = lambda xx: bases.metric(xx, N=20)
+    # Shoot a geodesic from emb1 in the direction of emb2, using the metric
+    # norm of (emb2 - emb1) as the arc length so the geodesic travels a
+    # comparable distance. This does not enforce arrival at emb2.
+    v0 = emb2 - emb1
+    g0 = metric(emb1)
+    length = float(np.sqrt(v0 @ g0 @ v0))
 
-    # Shooting: find initial velocity v0 at emb1 s.t. geodesic reaches emb2 at t=1
-    n_emb = len(emb1)
-    def make_tracked_eq(pbar):
-        last_t = [0.0]
-        def eq(t, y):
-            inc = int((t - last_t[0]) * 100)
-            if inc > 0:
-                pbar.update(inc)
-                last_t[0] = t
-            return dn.geodesic_equation(y, metric)
-        return eq
-
-    def shoot(v0, pbar):
-        pbar.reset()
-        y0 = np.r_[emb1, v0]
-        sol = solve_ivp(
-            make_tracked_eq(pbar),
-            [0.0, 1.0], y0, method='RK45', rtol=1e-6, atol=1e-8,
-        )
-        return sol.y[:n_emb, -1] - emb2
-
-    v0_guess = emb2 - emb1
-    with tqdm(total=100, desc='Shooting') as pbar:
-        shoot_result = root(lambda v0: shoot(v0, pbar), v0_guess)
-    v0 = shoot_result.x
-
-    # Integrate geodesic with enough points for visualization
-    y0 = np.r_[emb1, v0]
-    with tqdm(total=100, desc='Integrating geodesic') as pbar:
-        geo_sol = solve_ivp(
-            make_tracked_eq(pbar),
-            [0.0, 1.0], y0,
-            t_eval=np.linspace(0, 1, 20),
-            method='RK45', rtol=1e-6, atol=1e-8,
-        )
-    geodesic_embs = geo_sol.y[:n_emb, :].T  # (20, n_emb)
+    geodesic_embs = dn.compute_geodesic(emb1, v0, metric, length=length,
+                                        num_points=20, progress=True)
 
     # Plot arm shapes along the geodesic
     tt = np.linspace(0, 1, 100)

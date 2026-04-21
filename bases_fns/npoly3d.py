@@ -37,11 +37,11 @@ def metric(gamma, gab, xi_bases):
     Ad_gammainv = np.array([pin.SE3(gamma[ti]).inverse().action for ti in range(N)])
     gdot_bases = np.array([_gammadot_help(Ad_gamma, Ad_gammainv, xi) for xi in xi_bases])
 
-    trapezoid_dot = np.ones(N) / (N-1)
+    trapezoid_dot = np.ones(N) / (N - 1)
     trapezoid_dot[0] /= 2
     trapezoid_dot[-1] /= 2
 
-    mm = np.einsum('nta,t,ab,mtb->nm', gdot_bases, trapezoid_dot, gab, gdot_bases)
+    mm = np.einsum('nta,t,ab,mtb->nm', gdot_bases, trapezoid_dot, gab, gdot_bases, optimize=True)
     return mm
 
 
