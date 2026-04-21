@@ -11,10 +11,13 @@ def gammadot(gamma, xi):
 
     Ad_gamma_t = np.array([pin.SE3(gamma[ti]).action for ti in range(N)])
     Ad_gammainv_t = np.array([pin.SE3(gamma[ti]).inverse().action for ti in range(N)])
-    integrand = Ad_gamma_t @ xi[:,:,None]
+    return _gammadot_help(Ad_gamma_t, Ad_gammainv_t, xi)
 
-    cum_integral = integrate.cumulative_trapezoid(integrand, dx=1 / (N - 1), axis=0, initial=0)
-    return (Ad_gammainv_t @ cum_integral)[:, :, 0]
+
+def _gammadot_help(AdG, AdGinv, xi):
+    integrand = AdG @ xi[:, :, None]
+    cum_integral = integrate.cumulative_trapezoid(integrand, dx=1 / (AdG.shape[0] - 1), axis=0, initial=0)
+    return (AdGinv @ cum_integral)[:, :, 0]
 
 
 def inner_product(gamma, gab, xi1, xi2):
@@ -28,8 +31,18 @@ def inner_product(gamma, gab, xi1, xi2):
 
 
 def metric(gamma, gab, xi_bases):
-    gdot_bases = [gammadot(gamma, xi) for xi in xi_bases]
+    N = gamma.shape[0]
 
+    Ad_gamma = np.array([pin.SE3(gamma[ti]).action for ti in range(N)])
+    Ad_gammainv = np.array([pin.SE3(gamma[ti]).inverse().action for ti in range(N)])
+    gdot_bases = np.array([_gammadot_help(Ad_gamma, Ad_gammainv, xi) for xi in xi_bases])
+
+    trapezoid_dot = np.ones(N) / (N-1)
+    trapezoid_dot[0] /= 2
+    trapezoid_dot[-1] /= 2
+
+    mm = np.einsum('nta,t,ab,mtb->nm', gdot_bases, trapezoid_dot, gab, gdot_bases)
+    return mm
 
 
 def shape_exp(xi):
