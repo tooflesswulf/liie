@@ -1,5 +1,6 @@
 import numpy as np
 import pinocchio as pin
+from scipy import integrate
 
 import matplotlib.pyplot as plt
 
@@ -7,19 +8,13 @@ import matplotlib.pyplot as plt
 def gammadot(gamma, xi):
     # gammadot(s) = Ad(gamma(s)).inv() @ int_0^s Ad(gamma(t)) @ xi dt
     N = gamma.shape[0]
-    gammadots = []
 
-    integrand = []
-    for ti in range(N):
-        Ad_gamma_t = pin.SE3(gamma[ti]).action
-        integrand.append(Ad_gamma_t @ xi[ti])
+    Ad_gamma_t = np.array([pin.SE3(gamma[ti]).action for ti in range(N)])
+    Ad_gammainv_t = np.array([pin.SE3(gamma[ti]).inverse().action for ti in range(N)])
+    integrand = Ad_gamma_t @ xi[:,:,None]
 
-    for ti in range(N):
-        integral = np.trapezoid(integrand[:ti + 1], dx=1 / (N - 1), axis=0)
-
-        Ad_gamma_s_inv = pin.SE3(gamma[ti]).inverse().action
-        gammadots.append(Ad_gamma_s_inv @ integral)
-    return np.array(gammadots)
+    cum_integral = integrate.cumulative_trapezoid(integrand, dx=1 / (N - 1), axis=0, initial=0)
+    return (Ad_gammainv_t @ cum_integral)[:, :, 0]
 
 
 def inner_product(gamma, gab, xi1, xi2):
@@ -30,6 +25,11 @@ def inner_product(gamma, gab, xi1, xi2):
     # Compute the inner product as an integral over s
     integrand = np.einsum('si,ij,sj->s', gdot1, gab, gdot2)
     return np.trapezoid(integrand, dx=1 / (N - 1))
+
+
+def metric(gamma, gab, xi_bases):
+    gdot_bases = [gammadot(gamma, xi) for xi in xi_bases]
+
 
 
 def shape_exp(xi):
