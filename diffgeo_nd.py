@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.special
-from scipy.integrate import solve_ivp
+from scipy.integrate import solve_ivp, solve_bvp
 from scipy.optimize import root
 from tqdm.auto import tqdm
 import yaml
@@ -544,6 +544,127 @@ def dist_geo(x1, x2, metric, eps=1e-5, tol=1e-6, progress=False, return_path=Fal
         return dist, path
 
     return dist
+
+
+def geodesic_bvp(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3, progress=False):
+    """
+    Compute the geodesic path between x1 and x2 by solving the geodesic BVP directly.
+
+    Solves the geodesic ODE as a two-point boundary value problem:
+        ẋ = v
+        v̇ = -Γ^k_{ij} v^i v^j
+    subject to x(0) = x1, x(1) = x2, using a straight-line initial guess.
+
+    Returns path of shape (num_points, dim).
+    """
+    x1 = np.asarray(x1, dtype=float)
+    x2 = np.asarray(x2, dtype=float)
+    dim = len(x1)
+
+    def fun(t, y):
+        # y: (2*dim, n) — evaluate geodesic equation column-wise
+        return np.array([geodesic_equation(y[:, i], metric, eps=eps)
+                         for i in range(y.shape[1])]).T
+
+    def bc(ya, yb):
+        return np.r_[ya[:dim] - x1, yb[:dim] - x2]
+
+    # Initial guess: straight line with constant velocity
+    t_init = np.linspace(0, 1, num_points)
+    y_init = np.zeros((2 * dim, num_points))
+    y_init[:dim] = x1[:, None] + np.outer(x2 - x1, t_init)
+    y_init[dim:] = (x2 - x1)[:, None]
+
+    if progress:
+        pbar = tqdm(desc='geodesic_bvp', unit=' evals')
+        _fun = fun
+        def fun(t, y):
+            dydt = _fun(t, y)
+            # Collocation residual: how well does the ODE hold given current y?
+            dy_fd = np.gradient(y, t, axis=1)
+            res = np.linalg.norm(dy_fd - dydt) / y.shape[1]
+            pbar.update(1)
+            pbar.set_postfix({'ode_res': f'{res:.2e}'})
+            return dydt
+
+    sol = solve_bvp(fun, bc, t_init, y_init, tol=tol)
+
+    if progress:
+        pbar.close()
+
+    if not sol.success:
+        raise RuntimeError(f"BVP geodesic failed to converge: {sol.message}")
+
+    t_out = np.linspace(0, 1, num_points)
+    return sol.sol(t_out)[:dim].T  # (num_points, dim)
+
+
+def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3,
+                               n_steps=10, progress=False):
+    """
+    Compute the geodesic between x1 and x2 via homotopy continuation.
+
+    Solves a sequence of BVPs with interpolated metrics:
+        metric_s(x) = (1 - s) * I  +  s * metric(x),   s in [0, 1]
+
+    At s=0 the metric is flat and the straight-line path is the exact solution.
+    Each step uses the previous solution as the warm start, so Newton stays
+    well-conditioned throughout.
+
+    Adaptive step size: if a BVP step fails, the step is halved and retried.
+
+    Returns path of shape (num_points, dim).
+    """
+    x1 = np.asarray(x1, dtype=float)
+    x2 = np.asarray(x2, dtype=float)
+    dim = len(x1)
+
+    def bc(ya, yb):
+        return np.r_[ya[:dim] - x1, yb[:dim] - x2]
+
+    def make_fun(s, pbar=None):
+        def fun(t, y):
+            result = np.zeros_like(y)
+            for i in range(y.shape[1]):
+                xi = y[:dim, i]
+                metric_s = (1 - s) * np.eye(dim) + s * metric(xi)
+                result[:, i] = geodesic_equation(y[:, i], lambda x: metric_s, eps=eps)
+            if pbar is not None:
+                pbar.set_postfix({'s': f'{s:.2f}', 'n_pts': y.shape[1]})
+                pbar.update(1)
+            return result
+        return fun
+
+    # s=0: straight line is the exact solution
+    t_cur = np.linspace(0, 1, num_points)
+    y_cur = np.zeros((2 * dim, num_points))
+    y_cur[:dim] = x1[:, None] + np.outer(x2 - x1, t_cur)
+    y_cur[dim:] = (x2 - x1)[:, None]
+
+    pbar = tqdm(desc='continuation', unit=' evals') if progress else None
+
+    s = 0.0
+    ds = 1.0 / n_steps
+    while s < 1.0 - 1e-12:
+        s_next = min(s + ds, 1.0)
+        sol = solve_bvp(make_fun(s_next, pbar), bc, t_cur, y_cur, tol=tol)
+
+        if sol.success:
+            # Accept step: use refined mesh as next warm start
+            t_cur = sol.x
+            y_cur = sol.y
+            s = s_next
+        else:
+            # Halve step and retry
+            ds /= 2
+            if ds < 1e-6:
+                raise RuntimeError(f"Continuation failed at s={s:.4f}: step size too small")
+
+    if pbar is not None:
+        pbar.close()
+
+    t_out = np.linspace(0, 1, num_points)
+    return sol.sol(t_out)[:dim].T  # (num_points, dim)
 
 
 if __name__ == '__main__':
