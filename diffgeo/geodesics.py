@@ -173,7 +173,7 @@ def geodesic_bvp(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3, progress=Fa
 
 
 def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3,
-                               n_steps=10, progress=False):
+                               n_steps=10, progress=False, max_points=None):
     """
     Compute the geodesic between x1 and x2 via homotopy continuation.
 
@@ -183,6 +183,18 @@ def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3
     At s=0 the metric is flat and the straight-line path is the exact solution.
     Each step warm-starts from the previous solution. Step size halves on failure.
 
+    After each successful step the mesh size is checked; if it exceeds
+    ``max_points``, the solver attempts to re-solve on a coarser ``num_points``
+    grid (using the current solution as the initial guess).  The coarser mesh is
+    kept only when the re-solve succeeds, so accuracy is never sacrificed.
+
+    Parameters
+    ----------
+    max_points : int, optional
+        Mesh-coarsening threshold.  When ``len(t_cur) > max_points`` after a
+        successful step, a coarsening re-solve is attempted.
+        Defaults to ``2 * num_points``.
+
     Returns
     -------
     path : (num_points, dim)
@@ -191,16 +203,20 @@ def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3
     x2 = np.asarray(x2, dtype=float)
     dim = len(x1)
 
+    if max_points is None:
+        max_points = 2 * num_points
+
     def bc(ya, yb):
         return np.r_[ya[:dim] - x1, yb[:dim] - x2]
 
     def make_fun(s, pbar=None):
+        def metric_s(x):
+            return (1 - s) * np.eye(dim) + s * metric(x)
+
         def fun(t, y):
             result = np.zeros_like(y)
             for i in range(y.shape[1]):
-                xi = y[:dim, i]
-                metric_s = (1 - s) * np.eye(dim) + s * metric(xi)
-                result[:, i] = geodesic_equation(y[:, i], lambda x, m=metric_s: m, eps=eps)
+                result[:, i] = geodesic_equation(y[:, i], metric_s, eps=eps)
             if pbar is not None:
                 pbar.set_postfix({'s': f'{s:.2f}', 'n_pts': y.shape[1]})
                 pbar.update(1)
@@ -215,6 +231,7 @@ def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3
 
     pbar = tqdm(desc='continuation', unit=' evals') if progress else None
 
+    sol = None
     s, ds = 0.0, 1.0 / n_steps
     while s < 1.0 - 1e-12:
         s_next = min(s + ds, 1.0)
@@ -222,6 +239,20 @@ def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3
         if sol.success:
             t_cur, y_cur = sol.x, sol.y
             s = s_next
+
+            # Attempt mesh coarsening when the adaptive solver has added too
+            # many points.  Re-solve on a fresh num_points grid; keep the
+            # coarser result only if it converges.
+            if len(t_cur) > max_points:
+                t_coarse = np.linspace(0.0, 1.0, num_points)
+                y_coarse = sol.sol(t_coarse)
+                sol_c = solve_bvp(make_fun(s), bc, t_coarse, y_coarse, tol=tol)
+                if sol_c.success:
+                    sol = sol_c
+                    t_cur, y_cur = sol_c.x, sol_c.y
+                    if pbar is not None:
+                        pbar.set_postfix({'s': f'{s:.2f}',
+                                          'n_pts': f'{len(t_cur)} (coarsened)'})
         else:
             ds /= 2
             if ds < 1e-6:
@@ -229,5 +260,8 @@ def geodesic_bvp_continuation(x1, x2, metric, num_points=100, eps=1e-5, tol=1e-3
 
     if pbar is not None:
         pbar.close()
+
+    if sol is None:
+        raise RuntimeError("No continuation steps were taken")
 
     return sol.sol(np.linspace(0, 1, num_points))[:dim].T
